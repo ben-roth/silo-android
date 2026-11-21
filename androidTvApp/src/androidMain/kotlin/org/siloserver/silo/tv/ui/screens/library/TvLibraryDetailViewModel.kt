@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.siloserver.silo.genrelimits.limitedTo
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
@@ -227,6 +228,8 @@ class TvLibraryDetailViewModel(
     private val browsePrefs: BrowsePrefsStore? = null,
     catalogLanguage: org.siloserver.silo.domain.settings.CatalogLanguageRevision? = null,
     private val collectionRepository: org.siloserver.silo.repository.CollectionRepository? = null,
+    /** The household genre limit for the acting profile; null when none applies. */
+    private val genreLimit: kotlinx.coroutines.flow.Flow<org.siloserver.silo.genrelimits.GenreLimit?> = kotlinx.coroutines.flow.flowOf(null),
 ) : ViewModel() {
     /** Access changes this ViewModel has applied, kept while its screen is away. */
     val accessChanges = org.siloserver.silo.network.AccessChangeCursor()
@@ -283,7 +286,13 @@ class TvLibraryDetailViewModel(
             preserveFilters = browsePrefs?.preserveEnabled(libraryId, mediaScope) ?: true,
         ),
     )
+    /** The genre limit last seen, applied to the rows and Browse's preset genres. */
+    private var currentGenreLimit: org.siloserver.silo.genrelimits.GenreLimit? = null
+
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    /** The rows as loaded; the state shows them narrowed to the genre limit, as on Home. */
+    private var loadedSections: List<ResolvedSection> = emptyList()
 
     private val pageSize = 100
     private var loadedRecommended = false
@@ -317,6 +326,18 @@ class TvLibraryDetailViewModel(
         // `/catalog/filters` call is slow and is wasted work for the (common)
         // case where the user never leaves Recommended.
         loadRecommended()
+        viewModelScope.launch {
+            genreLimit.collect { limit ->
+                currentGenreLimit = limit
+                _uiState.update { it.copy(sections = loadedSections.limitedTo(limit)) }
+                // A limit arriving or changing re-presets Browse's genres.
+                val state = _uiState.value
+                if (state.selectedTab == TvLibraryTab.Browse) {
+                    val preset = state.browseFilter.withLimitGenres(limit)
+                    if (preset != state.browseFilter) updateBrowseFilter(preset)
+                }
+            }
+        }
         // Titles and descriptions are localized per metadata language.
         catalogLanguage?.let { language ->
             viewModelScope.launch {
@@ -337,7 +358,7 @@ class TvLibraryDetailViewModel(
         // and facets back to the tab's defaults (Title A–Z). Only a genuine
         // tab CHANGE applies the new tab's defaults.
         if (state.selectedTab == tab) return
-        val nextFilter = state.browseFilter.forTab(tab)
+        val nextFilter = state.browseFilter.forTab(tab).let { if (tab == TvLibraryTab.Browse) it.withLimitGenres(currentGenreLimit) else it }
         val filterChanged = nextFilter != state.browseFilter
         val audiobookGroupBy = tab.audiobookGroupBy
         _uiState.update {
@@ -507,6 +528,7 @@ class TvLibraryDetailViewModel(
         ++audiobookGroupsGeneration
         browseContinuation = null
         audiobookContinuation = null
+        loadedSections = emptyList()
         _uiState.update {
             it.copy(
                 sections = emptyList(),
@@ -576,8 +598,9 @@ class TvLibraryDetailViewModel(
         if (enabled) saveBrowseFilter(_uiState.value)
     }
 
-    private fun updateBrowseFilter(filter: TvLibraryBrowseFilter) {
+    private fun updateBrowseFilter(requested: TvLibraryBrowseFilter) {
         val previous = _uiState.value.browseFilter
+        val filter = if (_uiState.value.selectedTab == TvLibraryTab.Browse) requested.withLimitGenres(currentGenreLimit) else requested
         if (previous == filter) return
         _uiState.update { it.copy(browseFilter = filter) }
         if (previous.sort != filter.sort || previous.order != filter.order || previous.facetSelection != filter.facetSelection) {
@@ -592,7 +615,15 @@ class TvLibraryDetailViewModel(
     // sections are fixed presets.
     private fun saveBrowseFilter(state: UiState) {
         if (state.selectedTab != TvLibraryTab.Browse) return
-        browsePrefs?.saveState(libraryId, state.browseFilter.toSavedState(), mediaScope)
+        // The limit's preset genres are not saved: saved filters outlive the
+        // limit, and the preset is applied again on the next visit.
+        val limit = currentGenreLimit
+        val filter = if (limit != null && state.browseFilter.facetSelection.genres == limit.allowedGenres.toSet()) {
+            state.browseFilter.copy(facetSelection = state.browseFilter.facetSelection.copy(genres = emptySet()))
+        } else {
+            state.browseFilter
+        }
+        browsePrefs?.saveState(libraryId, filter.toSavedState(), mediaScope)
     }
 
     /**
@@ -681,6 +712,7 @@ class TvLibraryDetailViewModel(
             if (run != recommendedGeneration || !kotlinx.coroutines.currentCoroutineContext().isActive) return@launch
             if (owner == null) {
                 loadedRecommended = false
+                loadedSections = emptyList()
                 _uiState.update { it.copy(sections = emptyList(), recommendedLoading = false, recommendedError = UiText.Res(CommonR.string.library_error_signInForSections)) }
                 return@launch
             }
@@ -689,6 +721,7 @@ class TvLibraryDetailViewModel(
                 if (run != recommendedGeneration || !kotlinx.coroutines.currentCoroutineContext().isActive) return false
                 if (!valid) {
                     loadedRecommended = false
+                    loadedSections = emptyList()
                     _uiState.update { it.copy(sections = emptyList(), recommendedLoading = false) }
                 }
                 return valid
@@ -769,7 +802,9 @@ class TvLibraryDetailViewModel(
             if (!mayPublish()) return@launch
             _uiState.update {
                 it.copy(
-                    sections = scoped.map { it.section }.visibleOnTv(),
+                    sections = scoped.map { it.section }.visibleOnTv()
+                        .also { rows -> loadedSections = rows }
+                        .limitedTo(currentGenreLimit),
                     recommendedLoading = false,
                     recommendedError = if (scoped.any { it.incomplete }) {
                         UiText.Res(CommonR.string.library_error_someShelvesForType)
@@ -1093,6 +1128,19 @@ class TvLibraryDetailViewModel(
     }
 
     private fun mediaTypeFor(type: String): String? = tvCatalogMediaTypeFor(type)
+
+    /**
+     * For a limited profile, Browse opens with the allowed genres selected,
+     * so the filter shows what the grid is narrowed to. Clearing them all
+     * selects them again: the limit applies either way. A narrower choice
+     * the viewer made is kept.
+     */
+    private fun TvLibraryBrowseFilter.withLimitGenres(
+        limit: org.siloserver.silo.genrelimits.GenreLimit?,
+    ): TvLibraryBrowseFilter {
+        if (limit == null || genre != null || facetSelection.genres.isNotEmpty()) return this
+        return copy(facetSelection = facetSelection.copy(genres = limit.allowedGenres.toSet()))
+    }
 
     private fun TvLibraryBrowseFilter.forTab(tab: TvLibraryTab): TvLibraryBrowseFilter =
         when (tab) {

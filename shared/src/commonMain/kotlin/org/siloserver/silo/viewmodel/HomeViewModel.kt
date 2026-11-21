@@ -1,5 +1,6 @@
 package org.siloserver.silo.viewmodel
 
+import org.siloserver.silo.genrelimits.limitedTo
 import kotlinx.coroutines.flow.stateIn
 
 import androidx.lifecycle.ViewModel
@@ -673,17 +674,3 @@ private fun SectionItem.withFavorite(favorite: Boolean): SectionItem =
 private fun SectionItem.withWatchlist(inWatchlist: Boolean): SectionItem =
     copy(userState = (userState ?: MediaItemUserState()).copy(inWatchlist = inWatchlist))
 
-/**
- * Hides cards outside [limit]; a row that had cards and has none left is
- * dropped. Collection-poster rows go too: a collection has no genres, and it
- * opens onto titles the limit does not check.
- */
-private fun List<ResolvedSection>.limitedTo(limit: org.siloserver.silo.genrelimits.GenreLimit?): List<ResolvedSection> {
-    if (limit == null) return this
-    return mapNotNull { section ->
-        if (section.isCollectionRow) return@mapNotNull null
-        if (section.items.isEmpty()) return@mapNotNull section
-        val items = section.items.filter { limit.allows(it.genres) }
-        if (items.isEmpty()) null else section.copy(items = items)
-    }
-}

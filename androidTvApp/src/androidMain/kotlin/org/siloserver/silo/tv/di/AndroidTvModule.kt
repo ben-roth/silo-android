@@ -628,6 +628,8 @@ val androidTvModule = module {
             browsePrefs = get(),
             catalogLanguage = get(),
             collectionRepository = get(),
+            genreLimit = get<org.siloserver.silo.genrelimits.GenreConfigRepository>()
+                .limitFlow(org.siloserver.silo.genrelimits.GenreLimitSurface.BROWSE),
         )
     }
     viewModel { params ->

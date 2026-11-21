@@ -133,3 +133,22 @@ fun applyGenreLimit(
     if (distributed.size > MAX_DISTRIBUTED_GROUPS) return (nonEmpty + limitGroup) to "all"
     return distributed to "any"
 }
+
+/**
+ * Rows of titles narrowed to [limit]: cards whose genres miss it (and titles
+ * with none) are dropped, rows left empty are dropped, and rows of
+ * collections are dropped, since a collection opens onto titles the limit
+ * does not check. A row the server sent without items is kept for the
+ * caller to resolve. No limit leaves the rows alone.
+ */
+fun List<org.siloserver.silo.model.section.ResolvedSection>.limitedTo(
+    limit: GenreLimit?,
+): List<org.siloserver.silo.model.section.ResolvedSection> {
+    if (limit == null) return this
+    return mapNotNull { section ->
+        if (section.isCollectionRow) return@mapNotNull null
+        if (section.items.isEmpty()) return@mapNotNull section
+        val items = section.items.filter { limit.allows(it.genres) }
+        if (items.isEmpty()) null else section.copy(items = items)
+    }
+}
