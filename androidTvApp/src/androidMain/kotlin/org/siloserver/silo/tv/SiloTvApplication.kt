@@ -161,6 +161,16 @@ class SiloTvApplication : Application(), Configuration.Provider, SingletonImageL
         }.onFailure {
             android.util.Log.w("SiloTvApplication", "Legacy download importer init failed", it)
         }
+        // Household genre limits: fetch on launch, then every 15 minutes. The
+        // cached copy is loaded when the repository is made, so a failed fetch
+        // keeps the last limits. Guarded — never load-bearing for cold start.
+        runCatching {
+            koinApp.koin.get<org.siloserver.silo.genrelimits.GenreConfigRepository>().startPeriodicRefresh(
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO),
+            )
+        }.onFailure {
+            android.util.Log.w("SiloTvApplication", "Genre config refresh init failed", it)
+        }
     }
 
     override val workManagerConfiguration: Configuration

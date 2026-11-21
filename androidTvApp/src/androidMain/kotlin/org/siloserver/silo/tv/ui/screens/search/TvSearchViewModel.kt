@@ -325,6 +325,7 @@ class TvSearchViewModel(
                 mediaType = requestedMediaType.wire,
                 continuation = cursor,
                 limit = pageSize,
+                genreSurface = org.siloserver.silo.genrelimits.GenreLimitSurface.SEARCH,
             )
 
             // safeApiCall upstream swallows CancellationException into NetworkError —

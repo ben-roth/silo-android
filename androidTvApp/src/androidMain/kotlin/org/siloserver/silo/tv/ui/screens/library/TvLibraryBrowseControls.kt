@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.runtime.Composable
@@ -127,6 +128,8 @@ fun TvBrowseControlRow(
     sortPillFocusRequester: FocusRequester? = null,
     /** Starts a shuffle of what the grid browses; null where nothing can shuffle. */
     onShuffle: (() -> Unit)? = null,
+    /** Saves the filtered view as a Smart collection; null when it can't be saved. */
+    onSaveAsCollection: (() -> Unit)? = null,
 ) {
     // Clearing removes the Clear pill from composition; focus must hop to the
     // Filter pill first or it would snap away to the nearest surviving scope.
@@ -237,6 +240,24 @@ fun TvBrowseControlRow(
         }
 
         if (onShuffle != null) TvShufflePill(onClick = onShuffle)
+
+        if (onSaveAsCollection != null) {
+            BrowseControlPill(onClick = onSaveAsCollection) { foreground ->
+                Icon(
+                    imageVector = Icons.Outlined.BookmarkAdd,
+                    contentDescription = null,
+                    tint = foreground,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = stringResource(org.siloserver.silo.tv.R.string.tv_saveAsCollection_button),
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = foreground,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

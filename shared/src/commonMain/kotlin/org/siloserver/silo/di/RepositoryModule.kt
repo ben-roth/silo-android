@@ -72,6 +72,8 @@ val repositoryModule = module {
             catalogCache = getOrNull<org.siloserver.silo.repository.port.CatalogCachePort>()
                 ?: org.siloserver.silo.repository.port.NoOpCatalogCachePort,
             artwork = get(),
+            genreLimits = getOrNull<org.siloserver.silo.genrelimits.GenreLimitProvider>()
+                ?: org.siloserver.silo.genrelimits.GenreLimitProvider.None,
         )
     }
     single { CalendarRepository(get()) }

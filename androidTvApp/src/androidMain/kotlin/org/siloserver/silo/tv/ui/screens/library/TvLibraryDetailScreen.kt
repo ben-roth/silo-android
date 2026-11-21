@@ -152,6 +152,33 @@ fun TvLibraryDetailScreen(
     }
     OnViewerAccessChanged(koinInject<AccessChangeSignals>(), viewModel.accessChanges) { viewModel.refreshAfterAccessChange() }
 
+    // Save as collection (web parity): offered while the Browse filters narrow the view.
+    val saveDraft = remember(state) { viewModel.saveAsCollectionDraft(state) }
+    var showSaveAsCollection by remember { mutableStateOf(false) }
+    if (showSaveAsCollection && saveDraft != null) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        org.siloserver.silo.tv.ui.components.TvTextInputDialog(
+            title = stringResource(org.siloserver.silo.tv.R.string.tv_saveAsCollection_title),
+            label = stringResource(org.siloserver.silo.tv.R.string.tv_saveAsCollection_nameLabel),
+            confirmLabel = stringResource(org.siloserver.silo.tv.R.string.tv_saveAsCollection_save),
+            supportingText = stringResource(org.siloserver.silo.tv.R.string.tv_saveAsCollection_description),
+            initialValue = saveDraft.suggestedName,
+            isBusy = state.savingCollection,
+            onConfirm = { name ->
+                viewModel.saveAsCollection(name) { saved ->
+                    val message = if (saved) {
+                        context.getString(org.siloserver.silo.tv.R.string.tv_saveAsCollection_saved, name.trim())
+                    } else {
+                        context.getString(org.siloserver.silo.tv.R.string.tv_saveAsCollection_failed)
+                    }
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+                    if (saved) showSaveAsCollection = false
+                }
+            },
+            onDismiss = { showSaveAsCollection = false },
+        )
+    }
+
     // Apply the committed cascade section on entry / whenever the commit
     // changes it. Keyed on sectionRequestNonce (bumped on every commit) AND the
     // section value, so a non-commit recomposition leaves manual in-screen tab
@@ -198,6 +225,7 @@ fun TvLibraryDetailScreen(
                 onPreserveFiltersChanged = viewModel::onPreserveFiltersChanged,
                 onContentUpFallbackChanged = onContentUpFallbackChanged,
                 onShuffle = onShuffleLibrary,
+                onSaveAsCollection = saveDraft?.let { { showSaveAsCollection = true } },
             )
             TvLibraryTab.Genres -> LibraryTab(
                 state = state,
@@ -393,6 +421,7 @@ private fun LibraryTab(
     onContentUpFallbackChanged: ((((Boolean) -> Boolean)?) -> Unit)? = null,
     onClearAudiobookGroup: (() -> Unit)? = null,
     onShuffle: (() -> Unit)? = null,
+    onSaveAsCollection: (() -> Unit)? = null,
 ) {
     val restoredGridItemFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
@@ -476,6 +505,7 @@ private fun LibraryTab(
                 onOpenFilterPanel = { openPanel = TvBrowsePanel.Filter },
                 onClearFilters = { onFacetSelectionApplied(TvCatalogFacetSelection()) },
                 onShuffle = onShuffle,
+                onSaveAsCollection = onSaveAsCollection,
             )
         }
         // The A–Z jump rail only makes sense for title-sorted browsing (the
@@ -542,6 +572,7 @@ private fun LibraryGrid(
     onOpenFilterPanel: () -> Unit = {},
     onClearFilters: () -> Unit = {},
     onShuffle: (() -> Unit)? = null,
+    onSaveAsCollection: (() -> Unit)? = null,
 ) {
     var attachedRestoreItemId by remember { mutableStateOf<String?>(null) }
     val nearEnd by remember(
@@ -640,6 +671,7 @@ private fun LibraryGrid(
                         onClearFilters = onClearFilters,
                         modifier = Modifier.onFocusChanged { controlsFocused = it.hasFocus },
                         onShuffle = onShuffle,
+                        onSaveAsCollection = onSaveAsCollection,
                     )
                 }
             }

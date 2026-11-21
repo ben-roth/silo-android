@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hand-written strings for the household genre limits and Save as collection.
+     English only; these features are not in the shared translation catalog. -->
+<resources>
+    <string name="tv_genreLimits_title">Genre limits</string>
+    <string name="tv_genreLimits_profileId">Active profile ID</string>
+    <string name="tv_genreLimits_copyProfileId">Copy profile ID</string>
+    <string name="tv_genreLimits_copied">Profile ID copied</string>
+    <string name="tv_genreLimits_noProfile">No profile selected</string>
+    <string name="tv_genreLimits_lastFetched">Config last fetched</string>
+    <string name="tv_genreLimits_never">Never</string>
+    <string name="tv_genreLimits_token">Read token</string>
+    <string name="tv_genreLimits_tokenSet">Saved</string>
+    <string name="tv_genreLimits_tokenNotSet">Not set</string>
+    <string name="tv_genreLimits_tokenDialogTitle">Genre config read token</string>
+    <string name="tv_genreLimits_tokenDialogLabel">Token (leave blank to remove)</string>
+    <string name="tv_genreLimits_save">Save</string>
+    <string name="tv_genreLimits_refresh">Fetch config now</string>
+    <string name="tv_genreLimits_refreshing">Fetching…</string>
+    <string name="tv_genreLimits_activeLimit">This profile sees</string>
+    <string name="tv_genreLimits_noLimit">All genres</string>
+    <string name="tv_genreLimits_searchAll">Search shows all genres</string>
+    <string name="tv_genreLimits_error_noToken">Enter the read token to fetch the config.</string>
+    <string name="tv_genreLimits_error_unauthorized">The Worker refused the read token. The last fetched config is still in use.</string>
+    <string name="tv_genreLimits_error_http">The Worker returned an error. The last fetched config is still in use.</string>
+    <string name="tv_genreLimits_error_network">Couldn’t reach the Worker. The last fetched config is still in use.</string>
+    <string name="tv_genreLimits_error_invalid">The Worker sent a config this app can’t read. The last fetched config is still in use.</string>
+    <string name="tv_genreLimits_footer">Limits come from your genre config Worker and match this server and profile. They refresh at launch and every 15 minutes.</string>
+
+    <string name="tv_saveAsCollection_button">Save as collection</string>
+    <string name="tv_saveAsCollection_title">Save as a collection</string>
+    <string name="tv_saveAsCollection_description">Makes a Smart collection from these filters and this order. New titles that match join it on their own. Only you see it. To share it or add it to Home, edit it after saving.</string>
+    <string name="tv_saveAsCollection_nameLabel">Name</string>
+    <string name="tv_saveAsCollection_save">Save collection</string>
+    <string name="tv_saveAsCollection_saved">Saved “%1$s”</string>
+    <string name="tv_saveAsCollection_failed">Couldn’t save the collection</string>
+</resources>

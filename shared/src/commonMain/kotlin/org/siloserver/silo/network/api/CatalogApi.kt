@@ -8,6 +8,7 @@ import org.siloserver.silo.network.AuthScopeSnapshot
 import org.siloserver.silo.network.TokenManagerImpl
 import org.siloserver.silo.network.map
 import org.siloserver.silo.network.apiv2.*
+import org.siloserver.silo.genrelimits.applyGenreLimit
 import kotlinx.serialization.json.*
 
 /** Catalog reads on v2; the scoped delegates default to an unauthenticated token manager outside DI. */
@@ -24,24 +25,14 @@ class CatalogApi(client: HttpClient, private val v2: CatalogV2Api = CatalogV2Api
         queryGroups: List<CatalogQueryGroup> = emptyList(), match: String? = null,
         skipTotal: Boolean = false, widths: ArtworkWidths? = null, seek: Int? = null,
         windowCursor: String? = null,
+        /** Genres the active profile may see; empty for no limit. See [applyGenreLimit]. */
+        genreLimit: List<String> = emptyList(),
     ): ApiResult<CatalogResponse> {
-        val groups = queryGroups.toV2Groups().toMutableList()
-        val implicit = buildList {
-            genre?.takeIf { it.isNotBlank() }?.let { add(CatalogRuleV2("genre", "contains", JsonPrimitive(it))) }
-            when {
-                yearMin != null && yearMin > 0 && yearMax != null && yearMax > 0 ->
-                    add(CatalogRuleV2("year", "between", JsonArray(listOf(JsonPrimitive(yearMin), JsonPrimitive(yearMax)))))
-                yearMin != null && yearMin > 0 -> add(CatalogRuleV2("year", "gte", JsonPrimitive(yearMin)))
-                yearMax != null && yearMax > 0 -> add(CatalogRuleV2("year", "lte", JsonPrimitive(yearMax)))
-            }
-        }
-        if (implicit.isNotEmpty()) groups.add(CatalogRuleGroupV2("all", implicit))
-        contentRating?.takeIf { it.isNotBlank() }?.let {
-            groups.add(CatalogRuleGroupV2("all", listOf(CatalogRuleV2("content_rating", "is", JsonPrimitive(it)))))
-        }
+        val groups = catalogRuleGroups(queryGroups, genre, yearMin, yearMax, contentRating)
+        val (limitedGroups, limitedMatch) = applyGenreLimit(groups, match, genreLimit)
         return v2.browse(CatalogQueryV2(source = source ?: "query", q = query, type = mediaType,
             libraryId = libraryId?.toString(), sort = sort, order = order, limit = limit ?: 50,
-            namePrefix = namePrefix, groups = groups, match = match, skipTotal = skipTotal), continuation, widths = widths, seek = seek, windowCursor = windowCursor)
+            namePrefix = namePrefix, groups = limitedGroups, match = limitedMatch, skipTotal = skipTotal), continuation, widths = widths, seek = seek, windowCursor = windowCursor)
             .map { it.toCatalogResponse() }
     }
 
@@ -52,10 +43,14 @@ class CatalogApi(client: HttpClient, private val v2: CatalogV2Api = CatalogV2Api
     suspend fun getCatalogLetters(
         libraryId: Int?, mediaType: String?, order: String?,
         queryGroups: List<CatalogQueryGroup>, match: String?,
-    ): ApiResult<CatalogLettersV2?> = v2.letters(CatalogLettersQueryV2(
-        libraryId = libraryId?.toString(), type = mediaType, match = match,
-        groups = queryGroups.toV2Groups(), order = order,
-    ))
+        genreLimit: List<String> = emptyList(),
+    ): ApiResult<CatalogLettersV2?> {
+        val (groups, limitedMatch) = applyGenreLimit(queryGroups.toV2Groups(), match, genreLimit)
+        return v2.letters(CatalogLettersQueryV2(
+            libraryId = libraryId?.toString(), type = mediaType, match = limitedMatch,
+            groups = groups, order = order,
+        ))
+    }
 
     suspend fun getAudiobookGroups(libraryId: Int, groupBy: String, sort: String = "name",
         continuation: CatalogContinuationV2? = null, limit: Int? = null, query: String? = null,
@@ -125,6 +120,36 @@ class CatalogApi(client: HttpClient, private val v2: CatalogV2Api = CatalogV2Api
         continuation: CatalogContinuationV2? = null, limit: Int? = null, widths: ArtworkWidths? = null): ApiResult<CatalogResponse> =
         v2.browse(CatalogQueryV2(source = "person", personId = personId.toString(), type = mediaType,
             sort = "year", order = "desc", limit = limit ?: 50), continuation, widths = widths).map { it.toCatalogResponse() }
+}
+
+/**
+ * The rule groups a catalog browse sends for these filters: [queryGroups] as
+ * given, then the single genre and year range, then the content rating. Save
+ * as collection stores the same groups, so the collection lists what Browse
+ * showed.
+ */
+fun catalogRuleGroups(
+    queryGroups: List<CatalogQueryGroup>,
+    genre: String? = null,
+    yearMin: Int? = null,
+    yearMax: Int? = null,
+    contentRating: String? = null,
+): List<CatalogRuleGroupV2> {
+    val groups = queryGroups.toV2Groups().toMutableList()
+    val implicit = buildList {
+        genre?.takeIf { it.isNotBlank() }?.let { add(CatalogRuleV2("genre", "contains", JsonPrimitive(it))) }
+        when {
+            yearMin != null && yearMin > 0 && yearMax != null && yearMax > 0 ->
+                add(CatalogRuleV2("year", "between", JsonArray(listOf(JsonPrimitive(yearMin), JsonPrimitive(yearMax)))))
+            yearMin != null && yearMin > 0 -> add(CatalogRuleV2("year", "gte", JsonPrimitive(yearMin)))
+            yearMax != null && yearMax > 0 -> add(CatalogRuleV2("year", "lte", JsonPrimitive(yearMax)))
+        }
+    }
+    if (implicit.isNotEmpty()) groups.add(CatalogRuleGroupV2("all", implicit))
+    contentRating?.takeIf { it.isNotBlank() }?.let {
+        groups.add(CatalogRuleGroupV2("all", listOf(CatalogRuleV2("content_rating", "is", JsonPrimitive(it)))))
+    }
+    return groups
 }
 
 internal fun List<CatalogQueryGroup>.toV2Groups() = map { group ->

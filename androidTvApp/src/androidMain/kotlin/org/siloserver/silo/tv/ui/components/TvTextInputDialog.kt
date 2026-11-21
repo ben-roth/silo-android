@@ -67,6 +67,8 @@ fun TvTextInputDialog(
     errorMessage: String? = null,
     allowBlank: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
+    /** A short explanation under the title, when the field needs one. */
+    supportingText: String? = null,
 ) {
     var text by remember { mutableStateOf(initialValue) }
     val fieldFocusRequester = remember { FocusRequester() }
@@ -110,6 +112,13 @@ fun TvTextInputDialog(
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
                     )
+                    if (supportingText != null) {
+                        Text(
+                            text = supportingText,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     OutlinedTextField(
                         value = text,
                         onValueChange = { updated ->

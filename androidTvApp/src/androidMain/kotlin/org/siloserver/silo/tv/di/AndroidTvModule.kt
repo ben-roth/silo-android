@@ -93,6 +93,12 @@ val androidTvModule = module {
     // the token manager — see the phone module for rationale.
     single<SharedPreferences> { createSecureSharedPrefs(androidContext()) }
 
+    // Household genre limits read from the Worker; see GenreConfigRepository.
+    single { org.siloserver.silo.genrelimits.createGenreConfigRepository(androidContext(), get(), get(), get()) }
+    single<org.siloserver.silo.genrelimits.GenreLimitProvider> {
+        get<org.siloserver.silo.genrelimits.GenreConfigRepository>()
+    }
+
     // Multi-server registry. Loaded synchronously in init so MainTvActivity's
     // runBlocking-resolved start destination sees consistent state.
     single<ServerRegistry> { AndroidServerRegistry(get(), get()) }
@@ -568,7 +574,13 @@ val androidTvModule = module {
 
     // Content ViewModels
     // Starts hidden: the screens that show its rows report when they are on screen.
-    viewModel { HomeViewModel(get(), get(), get(), get(), getOrNull(), get(), get(), catalogLanguage = get(), startShown = false) }
+    viewModel {
+        HomeViewModel(
+            get(), get(), get(), get(), getOrNull(), get(), get(), catalogLanguage = get(), startShown = false,
+            genreLimit = get<org.siloserver.silo.genrelimits.GenreConfigRepository>()
+                .limitFlow(org.siloserver.silo.genrelimits.GenreLimitSurface.HOME),
+        )
+    }
     viewModel { org.siloserver.silo.tv.ui.screens.home.TvUpcomingViewModel(get()) }
     viewModel { RecommendationsViewModel(get(), catalogLanguage = get()) }
     // The Requests page loads its view models when it composes.
@@ -615,6 +627,7 @@ val androidTvModule = module {
             mediaScope = params.values.getOrNull(3) as? String,
             browsePrefs = get(),
             catalogLanguage = get(),
+            collectionRepository = get(),
         )
     }
     viewModel { params ->
@@ -629,9 +642,12 @@ val androidTvModule = module {
         )
     }
     // TV never shows reading items, so a row's page drops them as the row does.
+    // A Home row's page keeps the row's genre limit too.
     viewModel { params ->
+        val genreLimits = get<org.siloserver.silo.genrelimits.GenreConfigRepository>()
         org.siloserver.silo.viewmodel.SectionBrowseViewModel(get(), params.get()) { item ->
-            !org.siloserver.silo.tv.ui.util.isTvHiddenMediaType(item.type)
+            !org.siloserver.silo.tv.ui.util.isTvHiddenMediaType(item.type) &&
+                genreLimits.currentHomeLimit?.allows(item.genres) != false
         }
     }
     viewModel { TvSearchViewModel(get(), get(), get()) }

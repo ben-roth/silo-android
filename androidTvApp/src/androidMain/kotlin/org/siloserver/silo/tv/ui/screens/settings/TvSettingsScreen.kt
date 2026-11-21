@@ -2293,6 +2293,9 @@ private fun TvServerSettingsPane(
                 )
             }
         }
+        item {
+            TvGenreLimitsSettingsGroup()
+        }
         // Diagnostics used to hang off this pane as a "Diagnostics & Crash
         // Reports" drill-in to a route outside the shell. It is its own
         // category now (tvOS parity), so nothing here points at it.

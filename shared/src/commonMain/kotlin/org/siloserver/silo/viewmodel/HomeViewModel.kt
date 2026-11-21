@@ -84,6 +84,12 @@ class HomeViewModel(
      * [onHidden] so Home only reconciles while the viewer can see it.
      */
     startShown: Boolean = true,
+    /**
+     * The active profile's genre limit. Cards whose genres miss it (or that
+     * have none) are hidden, and a row left with no cards goes with them.
+     */
+    private val genreLimit: kotlinx.coroutines.flow.Flow<org.siloserver.silo.genrelimits.GenreLimit?> =
+        kotlinx.coroutines.flow.flowOf(null),
 ) : ViewModel() {
 
     private var displayedOwner: AuthScopeSnapshot? = null
@@ -109,8 +115,8 @@ class HomeViewModel(
     }
 
     private val _uiState = MutableStateFlow(HomeUiState())
-    val uiState: StateFlow<HomeUiState> = kotlinx.coroutines.flow.combine(_uiState, mediaActions.memberships.actions) { state, actions ->
-        var sections = state.sections
+    val uiState: StateFlow<HomeUiState> = kotlinx.coroutines.flow.combine(_uiState, mediaActions.memberships.actions, genreLimit) { state, actions, limit ->
+        var sections = state.sections.limitedTo(limit)
         actions.values.filter { it.baseline != null && it.baseline !in state.membershipReadWitnesses && mediaActions.memberships.current(it.intent) }.forEach { action ->
             sections = sections.mapItem(action.intent.key.itemId) {
                 if (action.intent.key.kind == org.siloserver.silo.repository.port.MembershipPort.Kind.FAVORITE)
@@ -666,3 +672,18 @@ private fun SectionItem.withFavorite(favorite: Boolean): SectionItem =
 
 private fun SectionItem.withWatchlist(inWatchlist: Boolean): SectionItem =
     copy(userState = (userState ?: MediaItemUserState()).copy(inWatchlist = inWatchlist))
+
+/**
+ * Hides cards outside [limit]; a row that had cards and has none left is
+ * dropped. Collection-poster rows go too: a collection has no genres, and it
+ * opens onto titles the limit does not check.
+ */
+private fun List<ResolvedSection>.limitedTo(limit: org.siloserver.silo.genrelimits.GenreLimit?): List<ResolvedSection> {
+    if (limit == null) return this
+    return mapNotNull { section ->
+        if (section.isCollectionRow) return@mapNotNull null
+        if (section.items.isEmpty()) return@mapNotNull section
+        val items = section.items.filter { limit.allows(it.genres) }
+        if (items.isEmpty()) null else section.copy(items = items)
+    }
+}

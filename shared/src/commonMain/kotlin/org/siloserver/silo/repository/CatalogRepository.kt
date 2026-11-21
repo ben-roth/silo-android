@@ -1,6 +1,8 @@
 package org.siloserver.silo.repository
 
 import org.siloserver.silo.domain.settings.CatalogLanguageRevision
+import org.siloserver.silo.genrelimits.GenreLimitProvider
+import org.siloserver.silo.genrelimits.GenreLimitSurface
 import org.siloserver.silo.repository.port.CatalogCacheScope
 import org.siloserver.silo.model.catalog.CatalogBoxSet
 import org.siloserver.silo.model.catalog.CatalogBoxSetDetail
@@ -51,6 +53,8 @@ class CatalogRepository(
     requestDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val catalogLanguage: CatalogLanguageRevision? = null,
     private val artwork: ArtworkSizing = ArtworkSizing.None,
+    /** The active profile's genre limit, added to every browse and search read. */
+    private val genreLimits: GenreLimitProvider = GenreLimitProvider.None,
 ) {
     /**
      * Home may warm a detail immediately before its destination requests the
@@ -133,8 +137,11 @@ class CatalogRepository(
         windowCursor: String? = null,
         /** True when the caller already knows the list's size (a letter index's total). */
         skipTotal: Boolean = false,
+        /** Which surface the read is for; Search may be exempt from a genre limit. */
+        genreSurface: GenreLimitSurface = GenreLimitSurface.BROWSE,
     ): ApiResult<CatalogResponse> {
         val requestIdentityGeneration = identityTransitions.generation.value
+        val genreLimit = genreLimits.limitFor(genreSurface)
         val sized = if (continuation == null) artwork.sizedRead(ArtworkSurface.BROWSE) else null
         val artworkFingerprint = artwork.cacheFingerprint(ArtworkSurface.BROWSE)
         val result = catalogApi.getCatalog(
@@ -157,7 +164,12 @@ class CatalogRepository(
             seek = seek,
             windowCursor = windowCursor,
             skipTotal = skipTotal,
+            genreLimit = genreLimit?.allowedGenres.orEmpty(),
         )
+
+        // A limited profile never reads or writes the offline default page:
+        // that page may hold titles from before the limit.
+        if (genreLimit != null) return result
 
         // Only the unfiltered, first-page default browse of a single library is
         // cached for offline (every request-shaping param must be at its default).
@@ -193,6 +205,7 @@ class CatalogRepository(
         val order: String?,
         val queryGroups: List<CatalogQueryGroup>,
         val match: String?,
+        val genreLimit: List<String>,
     )
     private val lettersCacheMutex = Mutex()
     private val lettersCache = LinkedHashMap<LettersKey, CatalogLettersV2>()
@@ -209,12 +222,13 @@ class CatalogRepository(
         queryGroups: List<CatalogQueryGroup> = emptyList(),
         match: String? = null,
     ): ApiResult<CatalogLettersV2?> {
-        val key = lettersKey(libraryId, mediaType, order, queryGroups, match)
-        val result = catalogApi.getCatalogLetters(libraryId, mediaType, order, queryGroups, match)
+        val genreLimit = genreLimits.limitFor(GenreLimitSurface.BROWSE)?.allowedGenres.orEmpty()
+        val key = lettersKey(libraryId, mediaType, order, queryGroups, match, genreLimit)
+        val result = catalogApi.getCatalogLetters(libraryId, mediaType, order, queryGroups, match, genreLimit)
         if (result is ApiResult.Success) {
             lettersCacheMutex.withLock {
                 // Only an answer for the identity and language still current.
-                if (key == lettersKey(libraryId, mediaType, order, queryGroups, match)) {
+                if (key == lettersKey(libraryId, mediaType, order, queryGroups, match, genreLimit)) {
                     val index = result.data
                     if (index == null) lettersCache.remove(key) else lettersCache[key] = index
                     while (lettersCache.size > LETTERS_CACHE_ENTRIES) lettersCache.remove(lettersCache.keys.first())
@@ -234,14 +248,17 @@ class CatalogRepository(
         order: String? = null,
         queryGroups: List<CatalogQueryGroup> = emptyList(),
         match: String? = null,
-    ): CatalogLettersV2? = lettersCacheMutex.withLock {
-        lettersCache[lettersKey(libraryId, mediaType, order, queryGroups, match)]
+    ): CatalogLettersV2? {
+        val genreLimit = genreLimits.limitFor(GenreLimitSurface.BROWSE)?.allowedGenres.orEmpty()
+        return lettersCacheMutex.withLock {
+            lettersCache[lettersKey(libraryId, mediaType, order, queryGroups, match, genreLimit)]
+        }
     }
 
     private fun lettersKey(
         libraryId: Int?, mediaType: String?, order: String?,
-        queryGroups: List<CatalogQueryGroup>, match: String?,
-    ) = LettersKey(identityTransitions.generation.value, currentLanguageRevision, libraryId, mediaType, order, queryGroups, match)
+        queryGroups: List<CatalogQueryGroup>, match: String?, genreLimit: List<String>,
+    ) = LettersKey(identityTransitions.generation.value, currentLanguageRevision, libraryId, mediaType, order, queryGroups, match, genreLimit)
 
     /**
      * A box set's movies in one library, in collection order. Live only: a box
@@ -268,8 +285,11 @@ class CatalogRepository(
      * libraries with box sets in search, and a failed read answers none, so it
      * never fails the search it sits beside.
      */
-    suspend fun searchBoxSets(query: String, limit: Int = 5): List<CatalogBoxSet> =
-        (catalogApi.searchBoxSets(query, limit) as? ApiResult.Success)?.data.orEmpty()
+    suspend fun searchBoxSets(query: String, limit: Int = 5): List<CatalogBoxSet> {
+        // A box set has no genres of its own, so a genre-limited search shows none.
+        if (genreLimits.limitFor(GenreLimitSurface.SEARCH) != null) return emptyList()
+        return (catalogApi.searchBoxSets(query, limit) as? ApiResult.Success)?.data.orEmpty()
+    }
 
     suspend fun searchFacet(scope: org.siloserver.silo.network.apiv2.CatalogFacetScopeV2, facet: String, prefix: String) =
         catalogApi.searchFacet(scope, facet, prefix)
@@ -282,13 +302,21 @@ class CatalogRepository(
         includeTechnical: Boolean = false,
         source: String? = null,
         collectionId: String? = null,
-    ): ApiResult<CatalogFiltersResponse> =
-        catalogApi.getFilters(
+    ): ApiResult<CatalogFiltersResponse> {
+        val result = catalogApi.getFilters(
             libraryId = libraryId,
             includeTechnical = includeTechnical,
             source = source,
             collectionId = collectionId,
         )
+        // A limited profile picks only among its allowed genres.
+        val limit = genreLimits.limitFor(GenreLimitSurface.BROWSE) ?: return result
+        return if (result is ApiResult.Success) {
+            ApiResult.Success(result.data.copy(genres = result.data.genres.filter { limit.allows(listOf(it)) }))
+        } else {
+            result
+        }
+    }
 
     /** Groups audiobook libraries by author, narrator, or series for book-native browsing. */
     suspend fun getAudiobookGroups(

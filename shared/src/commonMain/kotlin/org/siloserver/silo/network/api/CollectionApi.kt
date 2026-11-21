@@ -38,6 +38,10 @@ data class CollectionEditor<T>(val value: T, val etag: String, val scope: AuthSc
 
 @Serializable
 data class CollectionCapabilities(
+    /** `available`, `disabled`, `not_configured` or `unsupported`; absent on older servers. */
+    val state: String? = null,
+    /** Whether the acting profile may make collections; absent on older servers. */
+    val allowed: Boolean? = null,
     val groups: Boolean,
     val imports: Boolean,
     val artwork: Boolean,
@@ -120,6 +124,15 @@ class CollectionApi(
     }
 
     suspend fun createCollection(request: CreateCollectionRequest): ApiResult<Collection> = safeApiV2Call(gate) {
+        client.post("/api/v2/collections") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+    }
+
+    suspend fun createSmartCollection(
+        request: org.siloserver.silo.collections.CreateSmartCollectionRequest,
+    ): ApiResult<Collection> = safeApiV2Call(gate) {
         client.post("/api/v2/collections") {
             contentType(ContentType.Application.Json)
             setBody(request)

@@ -43,6 +43,15 @@ class CollectionRepository(
             CreateCollectionRequest(name = name, collectionType = collectionType),
         )
 
+    /** Creates a private personal Smart collection from [queryDefinition]. */
+    suspend fun createSmartCollection(
+        name: String,
+        queryDefinition: org.siloserver.silo.collections.SmartQueryDefinition,
+    ): ApiResult<Collection> =
+        collectionApi.createSmartCollection(
+            org.siloserver.silo.collections.CreateSmartCollectionRequest(name = name, queryDefinition = queryDefinition),
+        )
+
     /** Updates an existing collection. */
     suspend fun updateCollection(
         id: String,

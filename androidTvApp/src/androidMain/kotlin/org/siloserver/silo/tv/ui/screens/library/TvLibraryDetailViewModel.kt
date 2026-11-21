@@ -9,6 +9,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import org.siloserver.silo.catalog.sort.CatalogSortField
+import org.siloserver.silo.collections.hasCompleteRule
 import org.siloserver.silo.catalog.sort.CatalogSortRelevance
 import org.siloserver.silo.common.catalog.directionLabelRes
 import org.siloserver.silo.common.catalog.labelRes
@@ -225,6 +226,7 @@ class TvLibraryDetailViewModel(
     private val mediaScope: String? = null,
     private val browsePrefs: BrowsePrefsStore? = null,
     catalogLanguage: org.siloserver.silo.domain.settings.CatalogLanguageRevision? = null,
+    private val collectionRepository: org.siloserver.silo.repository.CollectionRepository? = null,
 ) : ViewModel() {
     /** Access changes this ViewModel has applied, kept while its screen is away. */
     val accessChanges = org.siloserver.silo.network.AccessChangeCursor()
@@ -262,6 +264,15 @@ class TvLibraryDetailViewModel(
         val collectionsError: UiText? = null,
         /** "Preserve sort & filters" for this library's Browse grid (default ON). */
         val preserveFilters: Boolean = true,
+        /** The acting profile may make personal collections (web Save as collection gate). */
+        val canCreateCollections: Boolean = false,
+        val savingCollection: Boolean = false,
+    )
+
+    /** What Save as collection would store for the current Browse view. */
+    data class SaveAsCollectionDraft(
+        val suggestedName: String,
+        val queryDefinition: org.siloserver.silo.collections.SmartQueryDefinition,
     )
 
     private val _uiState = MutableStateFlow(
@@ -584,6 +595,79 @@ class TvLibraryDetailViewModel(
         browsePrefs?.saveState(libraryId, state.browseFilter.toSavedState(), mediaScope)
     }
 
+    /**
+     * The Browse view as a Smart collection, or null when it can't be saved:
+     * the profile can't make collections, an audiobook group is open (a group
+     * axis is not a title list), or no complete rule narrows the view.
+     */
+    fun saveAsCollectionDraft(state: UiState = _uiState.value): SaveAsCollectionDraft? {
+        if (!state.canCreateCollections || state.selectedTab != TvLibraryTab.Browse) return null
+        if (state.selectedAudiobookGroup != null) return null
+        val filter = state.browseFilter
+        val facetGroups = filter.facetSelection.toQueryGroups()
+        val match = if (facetGroups.isNotEmpty()) {
+            if (filter.facetSelection.matchAll) "all" else "any"
+        } else {
+            null
+        }
+        val groups = org.siloserver.silo.network.api.catalogRuleGroups(
+            queryGroups = filter.queryGroups + facetGroups,
+            genre = filter.genre,
+            yearMin = filter.yearMin,
+            yearMax = filter.yearMax,
+        )
+        val query = org.siloserver.silo.collections.browseSmartQueryDefinition(
+            libraryId = libraryId,
+            mediaScope = mediaScope ?: mediaTypeFor(libraryType),
+            groups = groups,
+            match = match,
+            sort = filter.sort,
+            order = filter.order,
+        )
+        if (!query.hasCompleteRule()) return null
+        val decades = filter.facetSelection.decades
+        val yearFrom = filter.yearMin ?: decades.minOrNull()
+        val yearTo = filter.yearMax ?: decades.maxOrNull()?.plus(9)
+        val genres = listOfNotNull(filter.genre) + filter.facetSelection.genres
+        return SaveAsCollectionDraft(
+            suggestedName = org.siloserver.silo.collections.suggestedCollectionName(genres, yearFrom, yearTo),
+            queryDefinition = query,
+        )
+    }
+
+    /** Saves the Browse view as a private Smart collection named [name]; reports success. */
+    fun saveAsCollection(name: String, onResult: (Boolean) -> Unit) {
+        val repository = collectionRepository ?: return onResult(false)
+        val draft = saveAsCollectionDraft() ?: return onResult(false)
+        val trimmed = name.trim()
+        if (trimmed.isEmpty() || _uiState.value.savingCollection) return
+        _uiState.update { it.copy(savingCollection = true) }
+        viewModelScope.launch {
+            val result = repository.createSmartCollection(trimmed, draft.queryDefinition)
+            _uiState.update { it.copy(savingCollection = false) }
+            onResult(result is ApiResult.Success)
+        }
+    }
+
+    private var collectionCapabilitiesLoaded = false
+
+    private fun loadCollectionCapabilities() {
+        val repository = collectionRepository ?: return
+        if (collectionCapabilitiesLoaded) return
+        collectionCapabilitiesLoaded = true
+        viewModelScope.launch {
+            val capabilities = (repository.capabilities() as? ApiResult.Success)?.data
+            // Web gate: allowed and available. A server that predates the
+            // fields answers neither, and then can make collections.
+            val allowed = capabilities != null &&
+                capabilities.allowed != false &&
+                (capabilities.state == null || capabilities.state == "available")
+            // Retry on the next Browse load only when the server didn't answer.
+            if (capabilities == null) collectionCapabilitiesLoaded = false
+            _uiState.update { it.copy(canCreateCollections = allowed) }
+        }
+    }
+
     private fun loadRecommended() {
         val run = ++recommendedGeneration
         loadedRecommended = true
@@ -724,6 +808,7 @@ class TvLibraryDetailViewModel(
 
     private fun loadBrowse(reset: Boolean) {
         loadedBrowse = true
+        loadCollectionCapabilities()
 
         val generation = if (reset) {
             browseGeneration += 1
