@@ -94,7 +94,13 @@ val androidTvModule = module {
     single<SharedPreferences> { createSecureSharedPrefs(androidContext()) }
 
     // Household genre limits read from the Worker; see GenreConfigRepository.
-    single { org.siloserver.silo.genrelimits.createGenreConfigRepository(androidContext(), get(), get(), get()) }
+    single {
+        org.siloserver.silo.genrelimits.createGenreConfigRepository(
+            androidContext(), get(), get(), get(),
+            // Built from local.properties; a token entered in Settings wins.
+            builtInToken = BuildConfig.GENRE_CONFIG_TOKEN,
+        )
+    }
     single<org.siloserver.silo.genrelimits.GenreLimitProvider> {
         get<org.siloserver.silo.genrelimits.GenreConfigRepository>()
     }

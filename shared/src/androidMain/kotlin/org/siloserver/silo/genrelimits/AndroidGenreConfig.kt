@@ -24,11 +24,15 @@ private const val KEY_FETCHED_AT = "fetched_at_ms"
 class SharedPreferencesGenreConfigStore(
     context: Context,
     private val securePrefs: SharedPreferences,
+    /** A token built into the app, used when none was entered on the device. */
+    private val builtInToken: String? = null,
 ) : GenreConfigStore {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(GENRE_CONFIG_PREFS, Context.MODE_PRIVATE)
 
-    override fun readToken(): String? = securePrefs.getString(KEY_TOKEN, null)
+    override fun readToken(): String? =
+        securePrefs.getString(KEY_TOKEN, null)?.takeIf { it.isNotBlank() }
+            ?: builtInToken?.takeIf { it.isNotBlank() }
 
     override fun writeToken(token: String?) {
         securePrefs.edit().apply { if (token == null) remove(KEY_TOKEN) else putString(KEY_TOKEN, token) }.apply()
@@ -71,8 +75,9 @@ fun createGenreConfigRepository(
     securePrefs: SharedPreferences,
     tokenManager: TokenManager,
     identityTransitions: IdentityTransitionBarrier,
+    builtInToken: String? = null,
 ): GenreConfigRepository = GenreConfigRepository(
     client = org.siloserver.silo.network.createPlatformHttpClient(),
-    store = SharedPreferencesGenreConfigStore(context, securePrefs),
+    store = SharedPreferencesGenreConfigStore(context, securePrefs, builtInToken),
     identity = TokenManagerGenreLimitIdentity(tokenManager, identityTransitions),
 )

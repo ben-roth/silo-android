@@ -18,6 +18,17 @@ val siloLocaleFilters = Properties()
     .apply { rootProject.file("android-shared/silo-locales.properties").reader().use(::load) }
     .getProperty("tv").orEmpty().split(',').map(String::trim).filter(String::isNotEmpty)
 
+// The household genre config's read token, built into the app so a TV never
+// has to type it. It comes from the git-ignored local.properties
+// (silo.genreConfigToken=...) or SILO_GENRE_CONFIG_TOKEN, never from the repo.
+// Empty when neither is set: Settings › Server › Genre limits then asks for it.
+val siloGenreConfigToken: String = Properties()
+    .apply { rootProject.file("local.properties").takeIf { it.exists() }?.reader()?.use(::load) }
+    .getProperty("silo.genreConfigToken")
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: providers.environmentVariable("SILO_GENRE_CONFIG_TOKEN").orNull?.trim().orEmpty()
+
 // See androidApp's build.gradle.kts for the channel rationale.
 val siloReleaseChannels = listOf("release", "sideload", "dev")
 
@@ -197,6 +208,11 @@ android {
         // override without rebuilding the shared module. See androidApp's
         // build.gradle.kts for rationale.
         buildConfigField("boolean", "FFMPEG_AUDIO_ENABLED", "true")
+        buildConfigField(
+            "String",
+            "GENRE_CONFIG_TOKEN",
+            "\"${siloGenreConfigToken.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+        )
     }
     // Lists the shipped languages in the system per-app language screen
     // (Settings → Apps → Silo → Language). Reads res/resources.properties.
