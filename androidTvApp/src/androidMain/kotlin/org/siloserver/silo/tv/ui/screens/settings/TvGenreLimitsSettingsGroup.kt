@@ -36,6 +36,7 @@ import java.util.Date
 internal fun TvGenreLimitsSettingsGroup(
     repository: GenreConfigRepository = koinInject(),
     tokenManager: TokenManager = koinInject(),
+    firstFocusRequester: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -79,6 +80,7 @@ internal fun TvGenreLimitsSettingsGroup(
             label = stringResource(R.string.tv_genreLimits_token),
             value = stringResource(if (state.hasToken) R.string.tv_genreLimits_tokenSet else R.string.tv_genreLimits_tokenNotSet),
             onClick = { showTokenDialog = true },
+            focusRequester = firstFocusRequester,
         )
         SettingsActionRow(
             label = stringResource(if (state.refreshing) R.string.tv_genreLimits_refreshing else R.string.tv_genreLimits_refresh),

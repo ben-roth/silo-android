@@ -666,13 +666,15 @@ private fun SettingsRail(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        SettingsRailActionRow(
-            label = stringResource(CommonR.string.settings_signOut),
-            icon = Icons.AutoMirrored.Filled.Logout,
-            onClick = onRequestSignOut,
-            destructive = true,
-            onFocused = { railActionHasFocus = true },
-        )
+        if (org.siloserver.silo.tv.auth.rememberMayManageAccount()) {
+            SettingsRailActionRow(
+                label = stringResource(CommonR.string.settings_signOut),
+                icon = Icons.AutoMirrored.Filled.Logout,
+                onClick = onRequestSignOut,
+                destructive = true,
+                onFocused = { railActionHasFocus = true },
+            )
+        }
         Text(
             text = "Silo ${clientVersionLabel(BuildConfig.VERSION_NAME, BuildConfig.BUILD_NUMBER)}", // i18n-ignore
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -2270,6 +2272,7 @@ private fun TvServerSettingsPane(
     onManageServers: () -> Unit,
 ) {
     var showPrivacyPolicy by remember { mutableStateOf(false) }
+    val mayManageAccount = org.siloserver.silo.tv.auth.rememberMayManageAccount()
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -2285,16 +2288,20 @@ private fun TvServerSettingsPane(
                     SettingsInfoRow(label = stringResource(CommonR.string.settings_activeServer_address), value = state.serverUrl, singleLine = false)
                 }
                 // Settings › Accounts: every saved server and its accounts
-                // (multi-account spec §4.5), where the server list was.
-                SettingsActionRow(
-                    label = stringResource(CommonR.string.accounts_title),
-                    onClick = onManageServers,
-                    focusRequester = firstFocusRequester,
-                )
+                // (multi-account spec §4.5), where the server list was. Hidden
+                // with the other account actions from non-admin profiles.
+                if (mayManageAccount) {
+                    SettingsActionRow(
+                        label = stringResource(CommonR.string.accounts_title),
+                        onClick = onManageServers,
+                        focusRequester = firstFocusRequester,
+                    )
+                }
             }
         }
         item {
-            TvGenreLimitsSettingsGroup()
+            // Without the Accounts row, the pane's entry focus lands here.
+            TvGenreLimitsSettingsGroup(firstFocusRequester = firstFocusRequester.takeUnless { mayManageAccount })
         }
         // Diagnostics used to hang off this pane as a "Diagnostics & Crash
         // Reports" drill-in to a route outside the shell. It is its own

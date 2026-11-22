@@ -2220,17 +2220,20 @@ private fun TvProfileDropdown(
             )
             ProfileMenuRow.None -> Unit
         }
-        ProfileDropdownRow(
-            label = stringResource(CommonR.string.menu_changeAccount),
-            icon = Icons.Filled.SwitchAccount,
-            onClick = onChangeAccount,
-        )
-        ProfileDropdownRow(
-            label = stringResource(CommonR.string.menu_signOut),
-            icon = Icons.AutoMirrored.Filled.Logout,
-            destructive = true,
-            onClick = onSignOut,
-        )
+        // On a restricted build only the household's admin profiles see these.
+        if (org.siloserver.silo.tv.auth.rememberMayManageAccount()) {
+            ProfileDropdownRow(
+                label = stringResource(CommonR.string.menu_changeAccount),
+                icon = Icons.Filled.SwitchAccount,
+                onClick = onChangeAccount,
+            )
+            ProfileDropdownRow(
+                label = stringResource(CommonR.string.menu_signOut),
+                icon = Icons.AutoMirrored.Filled.Logout,
+                destructive = true,
+                onClick = onSignOut,
+            )
+        }
     }
 }
 

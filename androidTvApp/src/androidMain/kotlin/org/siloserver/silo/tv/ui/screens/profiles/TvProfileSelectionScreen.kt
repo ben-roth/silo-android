@@ -325,21 +325,26 @@ fun TvProfileSelectionScreen(
                                 icon = if (state.isManageMode) null else Icons.Outlined.ManageAccounts,
                             )
                         }
-                        // Where "Change server" was: other accounts and servers.
-                        TvMarqueeButton(
-                            text = stringResource(CommonR.string.profiles_changeAccount),
-                            onClick = viewModel::onChangeAccount,
-                            kind = TvMarqueeButtonKind.Glass,
-                            compact = true,
-                            icon = Icons.Outlined.SwitchAccount,
-                        )
-                        TvMarqueeButton(
-                            text = stringResource(CommonR.string.common_signOut),
-                            onClick = { showSignOutDialog = true },
-                            kind = TvMarqueeButtonKind.Glass,
-                            compact = true,
-                            icon = Icons.AutoMirrored.Outlined.Logout,
-                        )
+                        // A restricted build keeps these to the admin profile's own
+                        // menu: pick that profile first, so a child cannot sign
+                        // the TV out from the picker.
+                        if (!org.siloserver.silo.tv.auth.accountActionsRestricted) {
+                            // Where "Change server" was: other accounts and servers.
+                            TvMarqueeButton(
+                                text = stringResource(CommonR.string.profiles_changeAccount),
+                                onClick = viewModel::onChangeAccount,
+                                kind = TvMarqueeButtonKind.Glass,
+                                compact = true,
+                                icon = Icons.Outlined.SwitchAccount,
+                            )
+                            TvMarqueeButton(
+                                text = stringResource(CommonR.string.common_signOut),
+                                onClick = { showSignOutDialog = true },
+                                kind = TvMarqueeButtonKind.Glass,
+                                compact = true,
+                                icon = Icons.AutoMirrored.Outlined.Logout,
+                            )
+                        }
                     }
                 }
             }

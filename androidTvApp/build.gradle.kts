@@ -29,6 +29,14 @@ val siloGenreConfigToken: String = Properties()
     ?.takeIf { it.isNotEmpty() }
     ?: providers.environmentVariable("SILO_GENRE_CONFIG_TOKEN").orNull?.trim().orEmpty()
 
+// Profiles allowed to sign out or change account on this TV, also from
+// local.properties (silo.accountAdminProfileIds=id1,id2). Empty: every profile.
+val siloAccountAdminProfileIds: String = Properties()
+    .apply { rootProject.file("local.properties").takeIf { it.exists() }?.reader()?.use(::load) }
+    .getProperty("silo.accountAdminProfileIds")
+    ?.filter { it.isLetterOrDigit() || it == '-' || it == ',' }
+    .orEmpty()
+
 // See androidApp's build.gradle.kts for the channel rationale.
 val siloReleaseChannels = listOf("release", "sideload", "dev")
 
@@ -208,6 +216,11 @@ android {
         // override without rebuilding the shared module. See androidApp's
         // build.gradle.kts for rationale.
         buildConfigField("boolean", "FFMPEG_AUDIO_ENABLED", "true")
+        buildConfigField(
+            "String",
+            "ACCOUNT_ADMIN_PROFILE_IDS",
+            "\"$siloAccountAdminProfileIds\"",
+        )
         buildConfigField(
             "String",
             "GENRE_CONFIG_TOKEN",
