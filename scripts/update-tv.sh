@@ -79,16 +79,14 @@ case "$TV" in
 esac
 case "$target" in
   emulator-*) ;;
-  *)
-    echo "› Connecting to the TV at $target"
-    "$ADB" connect "$target" >/dev/null || true
-    if ! "$ADB" -s "$target" get-state >/dev/null 2>&1; then
-      echo "✗ Can't reach the TV at $target. Check it's on, Network debugging is on, and accept"
-      echo "  the \"Allow debugging\" prompt on the TV if it shows one. Then run this again."
-      exit 1
-    fi
-    ;;
+  *) echo "› Connecting to the TV at $target"; "$ADB" connect "$target" >/dev/null || true ;;
 esac
+if ! "$ADB" -s "$target" get-state >/dev/null 2>&1; then
+  echo "✗ Can't reach the TV at $target. Check it's on, Network debugging is on, and accept"
+  echo "  the \"Allow debugging\" prompt on the TV if it shows one. Then run this again."
+  echo "  The update is built and saved; running this again just installs it."
+  exit 1
+fi
 
 echo "› Installing on the TV"
 if ! "$ADB" -s "$target" install -r "$APK"; then
